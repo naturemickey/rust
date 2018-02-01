@@ -21,23 +21,23 @@ impl MirPass for Deaggregator {
                           tcx: TyCtxt<'a, 'tcx, 'tcx>,
                           source: MirSource,
                           mir: &mut Mir<'tcx>) {
-        let node_path = tcx.item_path_str(source.def_id);
-        debug!("running on: {:?}", node_path);
-        // we only run when mir_opt_level > 2
-        if tcx.sess.opts.debugging_opts.mir_opt_level <= 2 {
-            return;
-        }
-
         // Don't run on constant MIR, because trans might not be able to
         // evaluate the modified MIR.
         // FIXME(eddyb) Remove check after miri is merged.
         let id = tcx.hir.as_local_node_id(source.def_id).unwrap();
         match (tcx.hir.body_owner_kind(id), source.promoted) {
-            (hir::BodyOwnerKind::Fn, None) => {},
-            _ => return
+            (_, Some(_)) |
+            (hir::BodyOwnerKind::Const, _) |
+            (hir::BodyOwnerKind::Static(_), _) => return,
+
+            (hir::BodyOwnerKind::Fn, _) => {
+                if tcx.is_const_fn(source.def_id) {
+                    // Don't run on const functions, as, again, trans might not be able to evaluate
+                    // the optimized IR.
+                    return
+                }
+            }
         }
-        // In fact, we might not want to trigger in other cases.
-        // Ex: when we could use SROA.  See issue #35259
 
         for bb in mir.basic_blocks_mut() {
             let mut curr: usize = 0;
@@ -107,6 +107,7 @@ impl MirPass for Deaggregator {
     }
 }
 
+// FIXME(eddyb) clean up and support all aggregates.
 fn get_aggregate_statement_index<'a, 'tcx, 'b>(start: usize,
                                          statements: &Vec<Statement<'tcx>>)
                                          -> Option<usize> {
