@@ -58,7 +58,9 @@ impl<'tcx> PathTree<'tcx> {
         match *elem {
             ProjectionElem::Field(f, ty) => {
                 if let Some(adt) = self.ty.ty_adt_def() {
-                    if adt.is_union() {
+                    // Unions and packed types have additional (safety-related)
+                    // restrictions and it's easier to just not look into them.
+                    if adt.is_union() || adt.repr.packed() {
                         return None;
                     }
                 }
